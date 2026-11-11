@@ -72,6 +72,47 @@ public static class KamiToolKitLibrary {
     }
 
     /// <summary>
+    /// Synchronous initialization method. This method is required to be invoked before any KamiToolKit features are used.
+    /// Failure to do so will not result in any direct warnings, but will result in undefined behavior.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Plugin constructors are not executed on the framework thread, so awaiting <see cref="InitializeAsync"/>
+    /// there would deadlock: the awaited <c>IFramework.Run</c> only runs on the next framework update.
+    /// </para>
+    /// <para>
+    /// This overload performs the same work synchronously. The only step that used to be deferred to the framework
+    /// thread is the installation of the native close callback, which is a hook installation and therefore safe
+    /// to perform right away.
+    /// </para>
+    /// </remarks>
+    /// <param name="pluginInterface">The Dalamud plugin interface.</param>
+    /// <param name="defaultWindowSubtitle">The subtitle used for created windows.</param>
+    public static void Initialize(IDalamudPluginInterface pluginInterface, string? defaultWindowSubtitle = null) {
+        DefaultWindowSubtitle = defaultWindowSubtitle;
+        PluginInterface = pluginInterface;
+
+        // Inject non-Experimental Properties
+        PluginInterface.Create<Services>();
+        IGameInteropProvider.Get().InitializeFromAttributes(Experimental);
+
+        // Create node data share
+        AllocatedNodes = PluginInterface.GetOrCreateData(NodeDataShareKey, () => new ConcurrentDictionary<nint, Type>());
+
+        // Force enable Verbose so that users are able to get advanced logging information on request.
+        IPluginLog.Get().MinimumLogLevel = LogEventLevel.Verbose;
+
+        IPluginLog.Get().Info($"KamiToolKit initialized for {PluginInterface.InternalName} Default SubTitle: '{defaultWindowSubtitle}'");
+
+        // Reading the config is plain file IO and does not need the framework thread.
+        AddonConfigFile = LoadAddonConfigFileAsync().GetAwaiter().GetResult();
+
+        NativeAddon.InitializeCloseCallback();
+
+        RegisterDebugHelpers();
+    }
+
+    /// <summary>
     /// Sets the resource manager that KTK will use to resolve enums.
     /// </summary>
     public static void SetResourceManager(ResourceManager resourceManager) {
