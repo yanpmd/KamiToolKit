@@ -137,6 +137,26 @@ public unsafe class DragDropNode : ComponentNode<AtkComponentDragDrop, AtkUldCom
     }
 
     /// <summary>
+    /// Gets or sets whether the drag and drop manager skips the enabled state check when it
+    /// determines whether this node accepts the payload that is being dragged.
+    /// </summary>
+    /// <remarks>
+    /// Nodes that are built by hand are not necessarily flagged as enabled, and the check would make
+    /// the node an invalid drop target even though it is perfectly usable.
+    /// </remarks>
+    public bool SkipEnabledCheck {
+        get => Component->Flags.HasFlag(DragDropFlag.SkipEnabledCheck);
+        set {
+            if (value) {
+                Component->Flags |= DragDropFlag.SkipEnabledCheck;
+            }
+            else {
+                Component->Flags &= ~DragDropFlag.SkipEnabledCheck;
+            }
+        }
+    }
+
+    /// <summary>
     /// When true, allows left-clicking the item to trigger OnClicked
     /// </summary>
     public bool IsClickable {
@@ -234,6 +254,8 @@ public unsafe class DragDropNode : ComponentNode<AtkComponentDragDrop, AtkUldCom
         InitializeComponentEvents();
 
         AddEvent(AtkEventType.DragDropBegin, DragDropBeginHandler);
+        AddEvent(AtkEventType.DragDropCanAcceptCheck, DragDropCanAcceptCheckHandler);
+        AddEvent(AtkEventType.DragDropEnd, DragDropEndHandler);
         AddEvent(AtkEventType.DragDropInsert, DragDropInsertHandler);
         AddEvent(AtkEventType.DragDropDiscard, DragDropDiscardHandler);
         AddEvent(AtkEventType.DragDropClick, DragDropClickHandler);
@@ -256,6 +278,11 @@ public unsafe class DragDropNode : ComponentNode<AtkComponentDragDrop, AtkUldCom
     }
 
     private void DragDropBeginHandler(AtkEventListener* thisPtr, AtkEventType eventType, int eventParam, AtkEvent* atkEvent, AtkEventData* atkEventData) {
+        // A node without a payload has nothing to drag. Starting a session anyway leaves the game with an
+        // active but empty drag: the cursor turns into the drag cursor and the session has to be cancelled
+        // with escape, which shows up as a flicker.
+        if (Payload.Type is DragDropType.Nothing) return;
+
         atkEvent->SetEventIsHandled();
         Payload.ToDragDropInterface(atkEventData->DragDropData.DragDropInterface);
         OnBegin?.Invoke(this);
@@ -275,6 +302,21 @@ public unsafe class DragDropNode : ComponentNode<AtkComponentDragDrop, AtkUldCom
         var payload = DragDropPayload.FromDragDropInterface(atkEventData->DragDropData.DragDropInterface);
 
         OnPayloadAccepted?.Invoke(this, payload);
+    }
+
+    /// <summary>
+    /// Observes the question of the drag and drop manager whether this node is willing to accept the
+    /// payload that is currently being dragged.
+    /// </summary>
+    /// <remarks>
+    /// The native implementation of the drag drop component already answers this question on its own, so
+    /// the return flags of the event are left untouched here. Overriding them from the event handler
+    /// replaces what the native code decided and keeps the drag and drop manager from delivering the
+    /// payload to this node.
+    /// </remarks>
+    private void DragDropCanAcceptCheckHandler(AtkEventListener* thisPtr, AtkEventType eventType, int eventParam, AtkEvent* atkEvent, AtkEventData* atkEventData) {
+        // Intentionally empty. The handler only exists so the event is registered for this component.
+        // See the remarks above: the answer of the native implementation must not be overridden here.
     }
 
     private void DragDropDiscardHandler(AtkEventListener* thisPtr, AtkEventType eventType, int eventParam, AtkEvent* atkEvent, AtkEventData* atkEventData) {
