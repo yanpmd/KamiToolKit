@@ -95,6 +95,14 @@ public unsafe class IconNode : ComponentNode<AtkComponentIcon, AtkUldComponentDa
     }
 
     /// <summary>
+    /// Gets or sets whether this icon represents a glamoured item.
+    /// </summary>
+    public bool IsGlamoured {
+        get => Component->Flags.HasFlag(IconComponentFlags.IsGlamoured);
+        set => Component->SetIsGlamoured(value);
+    }
+
+    /// <summary>
     /// Gets whether this icon is being dragged.
     /// </summary>
     public bool IsBeingDragged
