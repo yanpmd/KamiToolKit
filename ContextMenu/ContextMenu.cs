@@ -144,7 +144,14 @@ public unsafe class ContextMenu : IDisposable {
     }
 
     private AtkValue* ContextMenuEventHandler(AtkModuleInterface.AtkEventInterface* thisPtr, AtkValue* returnValue, AtkValue* values, uint valueCount, ulong eventKind) {
-        *returnValue = new AtkValue { Type = AtkValueType.Bool, Bool = true };
+        // Never overwrite the game-owned returnValue with a freshly constructed AtkValue. The
+        // AtkValue init/assignment path calls ReleaseManagedMemoryInternal(), which on a
+        // zero-initialized instance dereferences an invalid pointer and kills the game
+        // (C0000005 in ContextMenuEventHandler, crash 2026-11-14 00:25). The SetBool calls
+        // below only write fields on the instance the game already owns.
+        if (returnValue == null)
+            return null;
+
         var handlerParam = (long)eventKind;
 
         if (handlerParam >= SubMenuIndexOffset) {

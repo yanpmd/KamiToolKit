@@ -113,176 +113,267 @@ public unsafe partial class NativeAddon {
     /// </summary>
     protected virtual void OnRefresh(AtkUnitBase* addon, Span<AtkValue> atkValues) { }
 
+    // Every method below is a ReversePInvoke entry point installed in the addon's virtual table.
+    // A managed exception leaving one of them is NOT caught by Dalamud: it travels back into the
+    // game and terminates the whole process (CLR error 0x12345679). Both the managed half and the
+    // call into the original virtual table are guarded; the original must still run whenever
+    // possible, because skipping it leaves the game's UI state machine stuck.
+
     private void Initialize(AtkUnitBase* thisPtr) {
-        IPluginLog.Get().Verbose($"[{InternalName}] Initialize");
-
-        originalVirtualTable->Initialize(thisPtr);
-
-        var widgetInfo = IMemorySpace.GetUISpace()->MallocZeroed<AtkUldWidgetInfo>();
-        widgetInfo->Id = 1;
-        widgetInfo->NodeCount = 0;
-        widgetInfo->NodeList = null;
-        widgetInfo->WidgetAlignment = new AtkWidgetAlignment {
-            AlignmentType = AlignmentType.Center,
-            X = 50.0f,
-            Y = 50.0f,
-        };
-
-        thisPtr->UldManager.InitializeResourceRendererManager();
-        InternalAddon->UldManager.ResourceFlags |= AtkUldManagerResourceFlag.Initialized;
-
-        InternalAddon->UldManager.Objects = (AtkUldObjectInfo*)widgetInfo;
-        InternalAddon->UldManager.ObjectCount = 1;
-        InternalAddon->UldManager.ResourceFlags |= AtkUldManagerResourceFlag.ArraysAllocated;
-
-        RootNode.AddTimeline(new TimelineBuilder()
-            .BeginFrameSet(1, 89)
-            .AddLabel(1, 101, AtkTimelineJumpBehavior.PlayOnce, 0)
-            .AddLabel(10, 102, AtkTimelineJumpBehavior.PlayOnce, 0)
-            .AddLabel(20, 103, AtkTimelineJumpBehavior.PlayOnce, 0)
-            .AddLabel(30, 104, AtkTimelineJumpBehavior.PlayOnce, 0)
-            .AddLabel(40, 105, AtkTimelineJumpBehavior.PlayOnce, 0)
-            .AddLabel(50, 106, AtkTimelineJumpBehavior.PlayOnce, 0)
-            .AddLabel(60, 107, AtkTimelineJumpBehavior.PlayOnce, 0)
-            .AddLabel(70, 108, AtkTimelineJumpBehavior.PlayOnce, 0)
-            .AddLabel(80, 109, AtkTimelineJumpBehavior.PlayOnce, 0)
-            .EndFrameSet()
-            .Build());
-
-        InternalAddon->RootNode = RootNode;
-        InternalAddon->UldManager.AddNodeToObjectList(RootNode);
-
-        if (!IsOverlayAddon && WindowNode is not null) {
-            WindowNode.AttachNode(this, NodePosition.AsFirstChild);
-            InternalAddon->WindowNode = WindowNode;
-            InternalAddon->UldManager.AddNodeToObjectList(WindowNode);
+        try {
+            IPluginLog.Get().Verbose($"[{InternalName}] Initialize");
+        }
+        catch (Exception e) {
+            ReportCallbackException(e);
         }
 
-        WindowNode?.WindowHeaderFocusNode.AddNodeFlags(NodeFlags.Focusable);
-        InternalAddon->FocusNode = WindowNode is not null ? WindowNode.WindowHeaderFocusNode : RootNode;
+        // The native initializer has to run before we build on top of the UldManager.
+        try {
+            originalVirtualTable->Initialize(thisPtr);
+        }
+        catch (Exception e) {
+            ReportCallbackException(e);
+            return;
+        }
 
-        InternalAddon->UldManager.UpdateDrawNodeList();
-        InternalAddon->UldManager.LoadedState = AtkLoadState.Loaded;
+        try {
+            var widgetInfo = IMemorySpace.GetUISpace()->MallocZeroed<AtkUldWidgetInfo>();
+            widgetInfo->Id = 1;
+            widgetInfo->NodeCount = 0;
+            widgetInfo->NodeList = null;
+            widgetInfo->WidgetAlignment = new AtkWidgetAlignment {
+                AlignmentType = AlignmentType.Center,
+                X = 50.0f,
+                Y = 50.0f,
+            };
 
-        InternalAddon->LoadState = AtkUnitBaseLoadState.LoadingUldResource;
-        InternalAddon->WasLoadUldByNameCalled = true;
-        InternalAddon->UpdateCollisionNodeList(false);
+            thisPtr->UldManager.InitializeResourceRendererManager();
+            InternalAddon->UldManager.ResourceFlags |= AtkUldManagerResourceFlag.Initialized;
 
-        // Now that we have constructed this instance, track it for auto-dispose
-        CreatedAddons.Add(this);
+            InternalAddon->UldManager.Objects = (AtkUldObjectInfo*)widgetInfo;
+            InternalAddon->UldManager.ObjectCount = 1;
+            InternalAddon->UldManager.ResourceFlags |= AtkUldManagerResourceFlag.ArraysAllocated;
+
+            RootNode.AddTimeline(new TimelineBuilder()
+                .BeginFrameSet(1, 89)
+                .AddLabel(1, 101, AtkTimelineJumpBehavior.PlayOnce, 0)
+                .AddLabel(10, 102, AtkTimelineJumpBehavior.PlayOnce, 0)
+                .AddLabel(20, 103, AtkTimelineJumpBehavior.PlayOnce, 0)
+                .AddLabel(30, 104, AtkTimelineJumpBehavior.PlayOnce, 0)
+                .AddLabel(40, 105, AtkTimelineJumpBehavior.PlayOnce, 0)
+                .AddLabel(50, 106, AtkTimelineJumpBehavior.PlayOnce, 0)
+                .AddLabel(60, 107, AtkTimelineJumpBehavior.PlayOnce, 0)
+                .AddLabel(70, 108, AtkTimelineJumpBehavior.PlayOnce, 0)
+                .AddLabel(80, 109, AtkTimelineJumpBehavior.PlayOnce, 0)
+                .EndFrameSet()
+                .Build());
+
+            InternalAddon->RootNode = RootNode;
+            InternalAddon->UldManager.AddNodeToObjectList(RootNode);
+
+            if (!IsOverlayAddon && WindowNode is not null) {
+                WindowNode.AttachNode(this, NodePosition.AsFirstChild);
+                InternalAddon->WindowNode = WindowNode;
+                InternalAddon->UldManager.AddNodeToObjectList(WindowNode);
+            }
+
+            WindowNode?.WindowHeaderFocusNode.AddNodeFlags(NodeFlags.Focusable);
+            InternalAddon->FocusNode = WindowNode is not null ? WindowNode.WindowHeaderFocusNode : RootNode;
+
+            InternalAddon->UldManager.UpdateDrawNodeList();
+            InternalAddon->UldManager.LoadedState = AtkLoadState.Loaded;
+
+            InternalAddon->LoadState = AtkUnitBaseLoadState.LoadingUldResource;
+            InternalAddon->WasLoadUldByNameCalled = true;
+            InternalAddon->UpdateCollisionNodeList(false);
+
+            // Now that we have constructed this instance, track it for auto-dispose
+            CreatedAddons.Add(this);
+        }
+        catch (Exception e) {
+            ReportCallbackException(e);
+        }
     }
 
     private void Setup(AtkUnitBase* addon, uint valueCount, AtkValue* values) {
-        IPluginLog.Get().Verbose($"[{InternalName}] Setup");
+        try {
+            IPluginLog.Get().Verbose($"[{InternalName}] Setup");
 
-        if (!IsOverlayAddon) {
-            SetInitialState();
+            if (!IsOverlayAddon) {
+                SetInitialState();
+            }
+            else {
+                ref var screenSize = ref AtkStage.Instance()->ScreenSize;
+
+                addon->SetScale(1.0f / AtkUnitBase.GetGlobalUIScale(), true);
+                addon->SetSize((ushort)screenSize.Width, (ushort)screenSize.Height);
+                addon->SetPosition(0, 0);
+            }
         }
-        else {
-            ref var screenSize = ref AtkStage.Instance()->ScreenSize;
-
-            addon->SetScale(1.0f / AtkUnitBase.GetGlobalUIScale(), true);
-            addon->SetSize((ushort)screenSize.Width, (ushort)screenSize.Height);
-            addon->SetPosition(0, 0);
+        catch (Exception e) {
+            ReportCallbackException(e);
         }
 
-        originalVirtualTable->OnSetup(addon, valueCount, values);
+        try {
+            originalVirtualTable->OnSetup(addon, valueCount, values);
+        }
+        catch (Exception e) {
+            ReportCallbackException(e);
+        }
 
         try {
             OnSetup(addon, new Span<AtkValue>(values, (int)valueCount));
+
+            // Initialize all TextId fields that were attached in OnSetup
+            addon->UldManager.SetupTextRecursive();
+
+            isSetup = true;
         }
         catch (Exception e) {
-            IPluginLog.Get().Exception(e);
+            ReportCallbackException(e);
         }
-
-        // Initialize all TextId fields that were attached in OnSetup
-        addon->UldManager.SetupTextRecursive();
-
-        isSetup = true;
     }
 
     private void Show(AtkUnitBase* addon, bool silenceOpenSoundEffect, uint unsetShowHideFlags) {
-        IPluginLog.Get().Verbose($"[{InternalName}] Show");
-
         try {
+            IPluginLog.Get().Verbose($"[{InternalName}] Show");
             OnShow(addon);
         }
         catch (Exception e) {
-            IPluginLog.Get().Exception(e);
+            ReportCallbackException(e);
         }
 
-        originalVirtualTable->Show(addon, silenceOpenSoundEffect, unsetShowHideFlags);
+        try {
+            originalVirtualTable->Show(addon, silenceOpenSoundEffect, unsetShowHideFlags);
+        }
+        catch (Exception e) {
+            ReportCallbackException(e);
+        }
     }
 
     private void Update(AtkUnitBase* addon, float delta) {
-        IPluginLog.Get().Excessive($"[{InternalName}] Update");
-
         try {
+            IPluginLog.Get().Excessive($"[{InternalName}] Update");
             OnUpdate(addon);
         }
         catch (Exception e) {
-            IPluginLog.Get().Exception(e);
+            ReportCallbackException(e);
         }
 
-        originalVirtualTable->Update(addon, delta);
+        try {
+            originalVirtualTable->Update(addon, delta);
+        }
+        catch (Exception e) {
+            ReportCallbackException(e);
+        }
     }
 
     private void Draw(AtkUnitBase* addon) {
-        IPluginLog.Get().Excessive($"[{InternalName}] Draw");
-
         try {
+            IPluginLog.Get().Excessive($"[{InternalName}] Draw");
             OnDraw(addon);
         }
         catch (Exception e) {
-            IPluginLog.Get().Exception(e);
+            ReportCallbackException(e);
         }
 
-        originalVirtualTable->Draw(addon);
+        try {
+            originalVirtualTable->Draw(addon);
+        }
+        catch (Exception e) {
+            ReportCallbackException(e);
+        }
     }
 
     private void Hide(AtkUnitBase* addon, bool unkBool, bool callHideCallback, uint setShowHideFlags) {
-        IPluginLog.Get().Verbose($"[{InternalName}] Hide");
-
         try {
+            IPluginLog.Get().Verbose($"[{InternalName}] Hide");
             OnHide(addon);
             SaveAddonConfig();
         }
         catch (Exception e) {
-            IPluginLog.Get().Exception(e);
+            ReportCallbackException(e);
         }
 
-        originalVirtualTable->Hide(addon, unkBool, callHideCallback, setShowHideFlags);
-        originalVirtualTable->Close(addon, false);
+        // Keep the original Hide + Close sequence: KTK intentionally treats a hide as a close,
+        // and dropping the Close call would leave InternalAddon non-null while the addon is gone.
+        try {
+            originalVirtualTable->Hide(addon, unkBool, callHideCallback, setShowHideFlags);
+            originalVirtualTable->Close(addon, false);
+        }
+        catch (Exception e) {
+            ReportCallbackException(e);
+        }
     }
 
     private void Hide2(AtkUnitBase* addon) {
-        IPluginLog.Get().Verbose($"[{InternalName}] Hide2");
+        try {
+            IPluginLog.Get().Verbose($"[{InternalName}] Hide2");
+        }
+        catch (Exception e) {
+            ReportCallbackException(e);
+        }
 
-        originalVirtualTable->Hide2(addon);
+        try {
+            originalVirtualTable->Hide2(addon);
+        }
+        catch (Exception e) {
+            ReportCallbackException(e);
+        }
     }
 
     private void Finalizer(AtkUnitBase* addon) {
-        IPluginLog.Get().Verbose($"[{InternalName}] Finalize");
-
         try {
+            IPluginLog.Get().Verbose($"[{InternalName}] Finalize");
             OnFinalize(addon);
+
+            if (RememberClosePosition) {
+                LastClosePosition = new Vector2(InternalAddon->X, InternalAddon->Y);
+            }
+
+            isSetup = false;
         }
         catch (Exception e) {
-            IPluginLog.Get().Exception(e);
+            ReportCallbackException(e);
         }
 
-        if (RememberClosePosition) {
-            LastClosePosition = new Vector2(InternalAddon->X, InternalAddon->Y);
+        try {
+            originalVirtualTable->Finalizer(addon);
         }
-
-        originalVirtualTable->Finalizer(addon);
-        isSetup = false;
+        catch (Exception e) {
+            ReportCallbackException(e);
+        }
     }
 
     private AtkEventListener* Destructor(AtkUnitBase* addon, byte flags) {
-        IPluginLog.Get().Verbose($"[{InternalName}] Destructor");
+        AtkEventListener* result = null;
 
-        var result = originalVirtualTable->Dtor(addon, flags);
+        try {
+            IPluginLog.Get().Verbose($"[{InternalName}] Destructor");
+        }
+        catch (Exception e) {
+            ReportCallbackException(e);
+        }
+
+        // Restore the game's virtual table BEFORE the native destructor frees the addon. The old
+        // code freed our copy without restoring the pointer, leaving a dangling vtable that the
+        // game could still call during teardown (the pure-native C0000005 crash).
+        if ((flags & 1) == 1) {
+            try {
+                if (originalVirtualTable != null)
+                    addon->VirtualTable = originalVirtualTable;
+            }
+            catch (Exception e) {
+                ReportCallbackException(e);
+            }
+        }
+
+        try {
+            result = originalVirtualTable->Dtor(addon, flags);
+        }
+        catch (Exception e) {
+            ReportCallbackException(e);
+        }
 
         if ((flags & 1) == 1) {
             InternalAddon = null;
@@ -290,50 +381,79 @@ public unsafe partial class NativeAddon {
             disposeHandle = null;
             CreatedAddons.Remove(this);
 
-            // Free our custom virtual table, the game doesn't know this exists and won't clear it on its own.
-            IMemorySpace.Free(modifiedVirtualTable);
+            try {
+                // Free our custom virtual table, the game doesn't know this exists and won't clear it on its own.
+                if (modifiedVirtualTable != null)
+                    IMemorySpace.Free(modifiedVirtualTable);
+            }
+            catch (Exception e) {
+                ReportCallbackException(e);
+            }
+            modifiedVirtualTable = null;
         }
 
         return result;
     }
 
     private void RequestedUpdate(AtkUnitBase* thisPtr, NumberArrayData** numberArrayData, StringArrayData** stringArrayData) {
-        IPluginLog.Get().Verbose($"[{InternalName}] RequestedUpdate");
+        try {
+            IPluginLog.Get().Verbose($"[{InternalName}] RequestedUpdate");
 
-        // Prevent calls to OnRequestedUpdate before Setup is completed. The game will try to call this after Show but before Setup
-        if (isSetup) {
-            try {
+            // Prevent calls to OnRequestedUpdate before Setup is completed. The game will try to call this after Show but before Setup
+            if (isSetup)
                 OnRequestedUpdate(thisPtr, numberArrayData, stringArrayData);
-
-            }
-            catch (Exception e) {
-                IPluginLog.Get().Exception(e);
-            }
+        }
+        catch (Exception e) {
+            ReportCallbackException(e);
         }
 
-        originalVirtualTable->OnRequestedUpdate(thisPtr, numberArrayData, stringArrayData);
+        try {
+            originalVirtualTable->OnRequestedUpdate(thisPtr, numberArrayData, stringArrayData);
+        }
+        catch (Exception e) {
+            ReportCallbackException(e);
+        }
     }
 
     private bool Refresh(AtkUnitBase* thisPtr, uint valueCount, AtkValue* values) {
-        IPluginLog.Get().Verbose($"[{InternalName}] Refresh");
-
         try {
+            IPluginLog.Get().Verbose($"[{InternalName}] Refresh");
             OnRefresh(thisPtr, new Span<AtkValue>(values, (int)valueCount));
         }
         catch (Exception e) {
-            IPluginLog.Get().Exception(e);
+            ReportCallbackException(e);
         }
 
-        return originalVirtualTable->OnRefresh(thisPtr,valueCount, values);
+        try {
+            return originalVirtualTable->OnRefresh(thisPtr, valueCount, values);
+        }
+        catch (Exception e) {
+            ReportCallbackException(e);
+            return false;
+        }
     }
 
     private void ScreenSizeChange(AtkUnitBase* thisPtr, int width, int height) {
-        IPluginLog.Get().Verbose($"[{InternalName}] ScreenSizeChange");
+        try {
+            IPluginLog.Get().Verbose($"[{InternalName}] ScreenSizeChange");
+        }
+        catch (Exception e) {
+            ReportCallbackException(e);
+        }
 
-        originalVirtualTable->OnScreenSizeChange(thisPtr, width, height);
+        try {
+            originalVirtualTable->OnScreenSizeChange(thisPtr, width, height);
+        }
+        catch (Exception e) {
+            ReportCallbackException(e);
+        }
 
-        if (IsOverlayAddon || IgnoreGlobalScale) {
-            thisPtr->SetScale(1.0f / AtkUnitBase.GetGlobalUIScale(), true);
+        try {
+            if (IsOverlayAddon || IgnoreGlobalScale)
+                thisPtr->SetScale(1.0f / AtkUnitBase.GetGlobalUIScale(), true);
+        }
+        catch (Exception e) {
+            ReportCallbackException(e);
         }
     }
 
