@@ -52,6 +52,26 @@ public class TabBarNode : ResNode, IControllerNavigable {
     }
 
     /// <summary>
+    ///     Selects a tab by its position without invoking its click callback or disposing any node.
+    /// </summary>
+    public void SelectTab(int index) {
+        if (index < 0 || index >= radioButtons.Count) return;
+
+        ClickHandler(radioButtons[index]);
+    }
+
+    /// <summary>
+    ///     Updates the label of an existing tab in place. Chat plugins change unread counts on
+    ///     nearly every message; rebuilding the bar for that disposes native nodes inside a draw
+    ///     callback, where AtkStage may still reference a focused node and crash the process.
+    /// </summary>
+    public void SetTabLabel(int index, ReadOnlySeString label) {
+        if (index < 0 || index >= radioButtons.Count) return;
+
+        radioButtons[index].String = label;
+    }
+
+    /// <summary>
     /// Disables a tab matching the given label, the tab won't be selectable or interactable.
     /// </summary>
     public void DisableTab(ReadOnlySeString label) {
