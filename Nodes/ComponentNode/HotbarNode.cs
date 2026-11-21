@@ -40,7 +40,15 @@ public partial class HotbarNode : DragDropNode {
     /// </summary>
     public void Update() {
         UpdateSlotAppearance();
+        UpdateInput();
+    }
 
+    /// <summary>
+    /// Polls the keybind and plays the pending click animation without refreshing the native slot
+    /// appearance. Use this for slots whose appearance is refreshed less often than once per frame,
+    /// so that key presses and the click animation keep working at full frame rate.
+    /// </summary>
+    public void UpdateInput() {
         TryProcessKeybind();
 
         if (lastClickTime is not null && DateTime.UtcNow - lastClickTime > TimeSpan.FromMilliseconds(330)) {

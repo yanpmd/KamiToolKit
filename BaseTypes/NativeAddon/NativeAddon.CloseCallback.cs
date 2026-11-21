@@ -40,12 +40,18 @@ public unsafe partial class NativeAddon {
             foreach (var addon in CreatedAddons) {
                 if (addon != thisPtr || !close || addon.IsOverlayAddon) continue;
 
-                // Addons that opt out of the escape handling still have to swallow the event. Passing it on
-                // to the original implementation would let the game close them, after which their owner
-                // would immediately reopen and rebuild them, which shows up as a flicker.
-                if (addon.RespectCloseAll) addon.Close();
+                if (addon.RespectCloseAll) {
+                    // The close was handled here, so stop the game from processing Esc any further.
+                    addon.Close();
 
-                return true;
+                    return true;
+                }
+
+                // This addon opted out of the escape handling. Reporting the callback as handled would
+                // swallow Esc globally and stop the game from opening the system menu. Do not pass it on
+                // to the original implementation either, because that would close the addon behind our
+                // back and make its owner rebuild it on the next frame.
+                return false;
             }
         }
         catch (Exception e) {
